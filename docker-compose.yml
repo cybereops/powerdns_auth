@@ -1,0 +1,78 @@
+---
+# =============================================================================
+# PowerDNS Authoritative Server 4.9.13 + PostgreSQL 16
+# Uso: cp .env.example .env && docker compose up -d
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Banco de dados PostgreSQL
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: powerdns-db
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${PDNS_DB_NAME}
+      POSTGRES_USER: ${PDNS_DB_USER}
+      POSTGRES_PASSWORD: ${PDNS_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PDNS_DB_USER} -d ${PDNS_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - pdns_net
+
+  # ---------------------------------------------------------------------------
+  # PowerDNS Authoritative Server 4.9.13
+  # ---------------------------------------------------------------------------
+  pdns:
+    image: powerdns/pdns-auth-49:4.9.13
+    container_name: powerdns-auth
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # Repassadas ao entrypoint para substituição no pdns.yml
+      PDNS_API_KEY: ${PDNS_API_KEY}
+      PDNS_DB_HOST: db
+      PDNS_DB_PORT: ${PDNS_DB_PORT:-5432}
+      PDNS_DB_NAME: ${PDNS_DB_NAME}
+      PDNS_DB_USER: ${PDNS_DB_USER}
+      PDNS_DB_PASSWORD: ${PDNS_DB_PASSWORD}
+    volumes:
+      # Template YAML de configuração do PowerDNS
+      - ./config/pdns.yml.tpl:/etc/powerdns/pdns.yml.tpl:ro
+      # Script de entrypoint que faz a substituição das variáveis
+      - ./docker/pdns/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    ports:
+      # DNS (TCP + UDP) — porta configurável via PDNS_DNS_PORT no .env
+      - "${PDNS_DNS_PORT:-5053}:53/tcp"
+      - "${PDNS_DNS_PORT:-5053}:53/udp"
+      # API REST (usada pelo Terraform)
+      - "${PDNS_WEBSERVER_PORT:-8081}:8081"
+    restart: unless-stopped
+    networks:
+      - pdns_net
+
+# -----------------------------------------------------------------------------
+# Rede interna isolada
+# -----------------------------------------------------------------------------
+networks:
+  pdns_net:
+    driver: bridge
+
+# -----------------------------------------------------------------------------
+# Volume persistente do banco
+# -----------------------------------------------------------------------------
+volumes:
+  db_data:

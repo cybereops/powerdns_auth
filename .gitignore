@@ -1,0 +1,18 @@
+# Variáveis de ambiente sensíveis
+.env
+
+# Dados persistentes do banco
+docker/db/data/
+
+# Terraform — state, credenciais e cache
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+
+# Artefatos de editor
+.DS_Store
+*.swp
+*.swo
